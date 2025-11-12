@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trading Dashboard 💹</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: radial-gradient(circle at top, #0d1117, #000);
+      color: #e6edf3;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    h2 {
+      font-weight: 600;
+      color: #00d4ff;
+      text-shadow: 0 0 20px rgba(0, 212, 255, 0.7);
+      animation: glowPulse 3s infinite;
+    }
+    @keyframes glowPulse {
+      0% { text-shadow: 0 0 10px #00d4ff; }
+      50% { text-shadow: 0 0 30px #00d4ff; }
+      100% { text-shadow: 0 0 10px #00d4ff; }
+    }
+
+    .btn {
+      font-weight: bold;
+      border: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+    }
+    .btn:hover {
+      transform: translateY(-2px) scale(1.05);
+      box-shadow: 0 0 25px rgba(0, 212, 255, 0.5);
+    }
+    .btn-primary { background: linear-gradient(145deg, #007bff, #00d4ff); }
+    .btn-success { background: linear-gradient(145deg, #00c851, #00ff9d); }
+    .btn-danger { background: linear-gradient(145deg, #ff4444, #ff6b6b); }
+
+    #signalOut {
+      font-size: 1.2rem;
+      color: #00ffea;
+      text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
+      padding: 10px 0;
+    }
+
+    table {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      overflow: hidden;
+      border: none;
+      box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
+    }
+    th {
+      color: #00d4ff;
+      background: rgba(255, 255, 255, 0.05);
+      text-transform: uppercase;
+      font-size: 0.85rem;
+    }
+    tr {
+      transition: all 0.3s ease;
+    }
+    tr:hover {
+      background-color: rgba(0, 212, 255, 0.05);
+      transform: scale(1.01);
+    }
+
+    /* Floating animation for subtle 3D motion */
+    .floating {
+      animation: float 4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+
+    /* Neon border glow for trade box */
+    .trade-box {
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: 0 0 25px rgba(0, 212, 255, 0.1);
+    }
+
+    /* Scrollbar style */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #00d4ff;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body class="p-4">
+  <div class="container">
+    <div class="text-center mb-4 floating">
+      <h2>💹 AI-Powered Paper Vision Dashboard</h2>
+      <p style="color:#8b949e;">Realistic simulation with algorithmic trade logging</p>
+    </div>
+
+    <div class="trade-box">
+      <div class="d-flex align-items-center mb-3">
+        <button id="getSignal" class="btn btn-primary me-3">🔮 Get Signal</button>
+        <button id="buy" class="btn btn-success me-3">💰 Buy</button>
+        <button id="sell" class="btn btn-danger me-3">📉 Sell</button>
+        <input id="qty" type="number" value="1" min="1" class="form-control" style="width:80px;background:#0d1117;color:white;border:none;">
+      </div>
+
+      <div id="signalOut" class="fw-bold"></div>
+    </div>
+
+    <div class="trade-box">
+      <h4 class="mb-3">📜 Trade History</h4>
+      <div style="max-height:400px;overflow-y:auto;">
+        <table id="tradesTbl" class="table table-dark table-hover table-striped">
+          <thead>
+            <tr><th>ID</th><th>Side</th><th>Qty</th><th>Price</th><th>Reason</th><th>Timestamp</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function refreshTrades(){
+      const r = await fetch('/trades');
+      const js = await r.json();
+      const tbody = document.querySelector('#tradesTbl tbody');
+      tbody.innerHTML = '';
+      js.trades.forEach(t => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${t.id}</td>
+          <td style="color:${t.side === 'BUY' ? '#00ff9d' : '#ff6b6b'};font-weight:bold;">${t.side}</td>
+          <td>${t.quantity}</td>
+          <td>${t.price || '-'}</td>
+          <td>${t.reason}</td>
+          <td>${t.ts}</td>`;
+        tbody.appendChild(row);
+      });
+    }
+
+    document.getElementById('getSignal').addEventListener('click', async () => {
+      const res = await fetch('/signal', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})});
+      const data = await res.json();
+      const el = document.getElementById('signalOut');
+      el.innerText = `Signal: ${data.signal} — ${data.reason}`;
+      el.style.color = (data.signal === 'BUY') ? '#00ff9d' : (data.signal === 'SELL') ? '#ff6b6b' : '#00d4ff';
+    });
+
+    document.getElementById('buy').addEventListener('click', async () => {
+      const qty = document.getElementById('qty').value || 1;
+      await fetch('/paper_trade', {
+        method: 'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({side:'BUY',quantity:qty,price:null,reason:'UI'})
+      });
+      refreshTrades();
+    });
+
+    document.getElementById('sell').addEventListener('click', async () => {
+      const qty = document.getElementById('qty').value || 1;
+      await fetch('/paper_trade', {
+        method: 'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({side:'SELL',quantity:qty,price:null,reason:'UI'})
+      });
+      refreshTrades();
+    });
+
+    refreshTrades();
+  </script>
+</body>
+</html>
