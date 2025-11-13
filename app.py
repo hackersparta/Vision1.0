@@ -92,47 +92,102 @@ def sentiment_page():
         return f"Error loading sentiment data: {e}"
 
 @app.route("/sentiment_data")
+@app.route("/sentiment_data")
 def sentiment_data():
-    """Returns summarized sentiment data for charts"""
+    """Return summarized sentiment data for charts, supports mode=current or all"""
     import sqlite3
     from trade_db import DB
+    from flask import request
 
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
 
-    # Count of sentiments (for Pie Chart)
-    cur.execute("""
+    stock = request.args.get("stock")
+    days = request.args.get("days", type=int, default=7)
+    mode = request.args.get("mode", "all")  # default: all data
+
+    # Find latest date for "current fetch"
+    cur.execute("SELECT date FROM news_sentiment ORDER BY id DESC LIMIT 1")
+    latest_date = cur.fetchone()[0] if cur.fetchone() else None
+
+    where_clause = []
+    params = []
+
+    if mode == "current" and latest_date:
+        where_clause.append("date = ?")
+        params.append(latest_date)
+    else:
+        where_clause.append("date >= DATE('now', ?)")
+        params.append(f"-{days} day")
+
+    if stock and stock.lower() != "all":
+        where_clause.append("LOWER(stock)=LOWER(?)")
+        params.append(stock)
+
+    where_sql = "WHERE " + " AND ".join(where_clause)
+
+    # Sentiment counts
+    cur.execute(f"""
         SELECT sentiment, COUNT(*) FROM news_sentiment
+        {where_sql}
         GROUP BY sentiment
-    """)
+    """, params)
     sentiment_counts = dict(cur.fetchall())
 
-    # Top 5 stocks with most positive sentiment (for Bar Chart)
-    cur.execute("""
-        SELECT stock, COUNT(*) as total
-        FROM news_sentiment
-        WHERE sentiment = 'POSITIVE'
+    # Top 5 positive
+    cur.execute(f"""
+        SELECT stock, COUNT(*) FROM news_sentiment
+        {where_sql} AND sentiment='POSITIVE'
         GROUP BY stock
-        ORDER BY total DESC
+        ORDER BY COUNT(*) DESC
         LIMIT 5
-    """)
-    top_positive = [{"stock": row[0], "count": row[1]} for row in cur.fetchall()]
+    """, params)
+    top_positive = [{"stock": r[0], "count": r[1]} for r in cur.fetchall()]
+
+    # Latest table records
+    cur.execute(f"""
+        SELECT date, stock, headline, sentiment, confidence, entities, link
+        FROM news_sentiment
+        {where_sql}
+        ORDER BY id DESC LIMIT 100
+    """, params)
+    rows = cur.fetchall()
 
     conn.close()
+
     return jsonify({
         "sentiment_counts": sentiment_counts,
-        "top_positive": top_positive
+        "top_positive": top_positive,
+        "rows": rows,
+        "latest_date": latest_date
     })
 
-    @app.route("/run_news_fetcher", methods=["POST"])
-    def run_news_fetcher():
-    """Manually trigger the news_fetcher script"""
+@app.route("/run_news_fetcher", methods=["POST"])
+def run_news_fetcher():
+    """Run the news fetcher and wait until it finishes"""
+    import subprocess
+    import time
+
     try:
-        subprocess.Popen(["python3", "news_fetcher.py"])
-        return jsonify({"status": "✅ News fetcher started! Check logs in terminal."})
+        start_time = time.time()
+        process = subprocess.run(["python3", "news_fetcher.py"], capture_output=True, text=True)
+        duration = round(time.time() - start_time, 2)
+
+        if process.returncode == 0:
+            return jsonify({
+                "status": f"✅ News fetcher completed successfully in {duration} sec",
+                "output": process.stdout[-4000:]  # last few log lines
+            })
+        else:
+            return jsonify({
+                "status": f"❌ Fetcher failed after {duration} sec",
+                "error": process.stderr
+            })
+
     except Exception as e:
-        return jsonify({"status": f"❌ Failed to start news fetcher: {e}"})
+        return jsonify({"status": f"❌ Error running fetcher: {e}"})
+
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000)
     
