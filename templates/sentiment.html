@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sentiment Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  
+  body {
+    background: radial-gradient(circle at 15% 20%, #0f172a, #1e293b);
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+  }
+  .glass {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 6px 35px rgba(0,0,0,0.35);
+  }
+  table tbody {
+    display: block;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  table thead, table tbody tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+  }
+  canvas {
+  max-height: 240px !important;
+}
+
+</style>
+</head>
+
+<body class="p-6">
+
+<!-- Header -->
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-3xl font-bold text-cyan-300">📈 Market Sentiment Dashboard</h1>
+  <button onclick="window.location.href='/'"
+          class="bg-cyan-500 hover:bg-cyan-400 px-6 py-2 rounded-lg text-white font-semibold">
+    🏠 Back
+  </button>
+</div>
+
+<!-- Filters + Trigger -->
+<div class="glass p-4 rounded-xl mb-6 flex flex-wrap justify-between items-center">
+  <div class="flex space-x-4">
+    <div>
+      <label>Stock:</label>
+      <select id="stockSelect" class="bg-slate-700 border border-slate-600 rounded px-3 py-1">
+        <option value="all">All</option>
+        {% for row in data|map(attribute=1)|unique %}
+        <option value="{{ row }}">{{ row }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>Days:</label>
+      <select id="daysSelect" class="bg-slate-700 border border-slate-600 rounded px-3 py-1">
+        <option value="1">1</option>
+        <option value="3">3</option>
+        <option value="7" selected>7</option>
+        <option value="30">30</option>
+      </select>
+    </div>
+
+    <button id="refreshBtn"
+            class="bg-cyan-500 hover:bg-cyan-400 px-4 py-2 rounded-lg font-semibold">
+      🔄 Refresh
+    </button>
+  </div>
+
+  <button id="fetchBtn"
+          class="bg-emerald-500 hover:bg-emerald-400 px-6 py-2 rounded-lg font-semibold">
+    📰 Run News Fetcher
+  </button>
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h2 class="text-cyan-300 text-lg mb-3">📊 Sentiment Overview (Last 7 Days)</h2>
+    <canvas id="sentimentChart"></canvas>
+  </div>
+
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h2 class="text-cyan-300 text-lg mb-3">🔥 Top Positive Stocks</h2>
+    <canvas id="topStocksChart"></canvas>
+  </div>
+</div>
+
+
+<!-- Table -->
+<div class="glass p-4 rounded-2xl">
+  <h2 class="text-lg text-cyan-300 mb-3">Latest Headlines</h2>
+
+  <table class="min-w-full text-sm">
+    <thead class="bg-slate-800 text-cyan-300 uppercase">
+      <tr>
+        <th class="px-3 py-2">Date</th>
+        <th class="px-3 py-2">Stock</th>
+        <th class="px-3 py-2">Headline</th>
+        <th class="px-3 py-2">Sentiment</th>
+        <th class="px-3 py-2">Conf</th>
+        <th class="px-3 py-2">Entities</th>
+        <th class="px-3 py-2">Link</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in data %}
+      <tr class="border-b border-slate-700 hover:bg-slate-800/40 transition">
+        <td class="px-3 py-2">{{ row[0] }}</td>
+        <td class="px-3 py-2">{{ row[1] }}</td>
+        <td class="px-3 py-2 text-gray-300">{{ row[2] }}</td>
+        <td class="px-3 py-2 
+            {% if row[3]=='POSITIVE' %}text-green-400{% 
+               elif row[3]=='NEGATIVE' %}text-red-400{% 
+               else %}text-yellow-300{% endif %}">
+          {{ row[3] }}
+        </td>
+        <td class="px-3 py-2">{{ "%.2f"|format(row[4] or 0) }}</td>
+        <td class="px-3 py-2">{{ row[5] }}</td>
+        <td class="px-3 py-2"><a class="text-blue-400" href="{{ row[6] }}" target="_blank">🔗</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+let sentimentChart, topStocksChart;
+
+// ---------- Load Chart Data ----------
+async function loadCharts() {
+  const stock = document.getElementById("stockSelect").value;
+  const days = document.getElementById("daysSelect").value;
+  const res = await fetch(`/sentiment_data?stock=${stock}&days=${days}`);
+  const data = await res.json();
+
+  const ctx1 = document.getElementById("sentimentChart").getContext("2d");
+  const ctx2 = document.getElementById("topStocksChart").getContext("2d");
+
+  if (sentimentChart) sentimentChart.destroy();
+  if (topStocksChart) topStocksChart.destroy();
+
+  sentimentChart = new Chart(ctx1, {
+  type: "bar",
+  data: {
+    labels: Object.keys(data.sentiment_counts),
+    datasets: [{
+      label: "Headline Count",
+      data: Object.values(data.sentiment_counts),
+      backgroundColor: ["#22c55e", "#ef4444", "#eab308"],
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    indexAxis: "y", // horizontal bar chart
+    plugins: {
+      legend: { display: false },
+      title: {
+        display: true,
+        text: "Sentiment Distribution",
+        color: "#e2e8f0",
+        font: { size: 14, weight: 'bold' }
+      }
+    },
+    scales: {
+      x: { ticks: { color: "#e2e8f0" } },
+      y: { ticks: { color: "#e2e8f0" } }
+    }
+  }
+});
+
+  topStocksChart = new Chart(ctx2, {
+    type: "bar",
+    data: {
+      labels: data.top_positive.map(i => i.stock),
+      datasets: [{
+        label: "Positive Mentions",
+        data: data.top_positive.map(i => i.count),
+        backgroundColor: "#22d3ee",
+        borderRadius: 8
+      }]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: "#e2e8f0" }},
+        y: { ticks: { color: "#e2e8f0" }}
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+document.getElementById("refreshBtn").onclick = loadCharts;
+
+// ---------- Manual News Fetcher ----------
+document.getElementById("fetchBtn").onclick = async () => {
+  const res = await fetch("/run_news_fetcher", { method: "POST" });
+  const msg = await res.json();
+  alert(msg.status);
+};
+
+loadCharts();
+</script>
+
+</body>
+</html>

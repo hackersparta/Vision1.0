@@ -2,179 +2,86 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Trading Dashboard 💹</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <title>AI Stock Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
-      background: radial-gradient(circle at top, #0d1117, #000);
-      color: #e6edf3;
-      font-family: 'Segoe UI', Roboto, sans-serif;
-      overflow-x: hidden;
+      background: radial-gradient(circle at 20% 20%, #0f172a, #1e293b);
       min-height: 100vh;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
     }
-    h2 {
-      font-weight: 600;
-      color: #00d4ff;
-      text-shadow: 0 0 20px rgba(0, 212, 255, 0.7);
-      animation: glowPulse 3s infinite;
+    .glass {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
     }
-    @keyframes glowPulse {
-      0% { text-shadow: 0 0 10px #00d4ff; }
-      50% { text-shadow: 0 0 30px #00d4ff; }
-      100% { text-shadow: 0 0 10px #00d4ff; }
+    .card-3d {
+      transition: 0.3s ease;
     }
-
-    .btn {
-      font-weight: bold;
-      border: none;
-      transition: all 0.3s ease;
-      box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-    }
-    .btn:hover {
-      transform: translateY(-2px) scale(1.05);
-      box-shadow: 0 0 25px rgba(0, 212, 255, 0.5);
-    }
-    .btn-primary { background: linear-gradient(145deg, #007bff, #00d4ff); }
-    .btn-success { background: linear-gradient(145deg, #00c851, #00ff9d); }
-    .btn-danger { background: linear-gradient(145deg, #ff4444, #ff6b6b); }
-
-    #signalOut {
-      font-size: 1.2rem;
-      color: #00ffea;
-      text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
-      padding: 10px 0;
-    }
-
-    table {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 12px;
-      backdrop-filter: blur(8px);
-      overflow: hidden;
-      border: none;
-      box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
-    }
-    th {
-      color: #00d4ff;
-      background: rgba(255, 255, 255, 0.05);
-      text-transform: uppercase;
-      font-size: 0.85rem;
-    }
-    tr {
-      transition: all 0.3s ease;
-    }
-    tr:hover {
-      background-color: rgba(0, 212, 255, 0.05);
-      transform: scale(1.01);
-    }
-
-    /* Floating animation for subtle 3D motion */
-    .floating {
-      animation: float 4s ease-in-out infinite;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-8px); }
-    }
-
-    /* Neon border glow for trade box */
-    .trade-box {
-      border: 1px solid rgba(0, 212, 255, 0.3);
-      border-radius: 15px;
-      padding: 20px;
-      margin-bottom: 20px;
-      background: rgba(255, 255, 255, 0.03);
-      box-shadow: 0 0 25px rgba(0, 212, 255, 0.1);
-    }
-
-    /* Scrollbar style */
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #00d4ff;
-      border-radius: 10px;
+    .card-3d:hover {
+      transform: translateY(-8px) scale(1.02);
     }
   </style>
 </head>
-<body class="p-4">
-  <div class="container">
-    <div class="text-center mb-4 floating">
-      <h2>💹 AI-Powered Paper Vision Dashboard</h2>
-      <p style="color:#8b949e;">Realistic simulation with algorithmic trade logging</p>
-    </div>
 
-    <div class="trade-box">
-      <div class="d-flex align-items-center mb-3">
-        <button id="getSignal" class="btn btn-primary me-3">🔮 Get Signal</button>
-        <button id="buy" class="btn btn-success me-3">💰 Buy</button>
-        <button id="sell" class="btn btn-danger me-3">📉 Sell</button>
-        <input id="qty" type="number" value="1" min="1" class="form-control" style="width:80px;background:#0d1117;color:white;border:none;">
-      </div>
+<body class="flex flex-col items-center justify-center p-6">
 
-      <div id="signalOut" class="fw-bold"></div>
-    </div>
+  <h1 class="text-4xl font-bold text-cyan-300 drop-shadow-lg mb-4">🧠 AI Stock NLP Analyzer</h1>
 
-    <div class="trade-box">
-      <h4 class="mb-3">📜 Trade History</h4>
-      <div style="max-height:400px;overflow-y:auto;">
-        <table id="tradesTbl" class="table table-dark table-hover table-striped">
-          <thead>
-            <tr><th>ID</th><th>Side</th><th>Qty</th><th>Price</th><th>Reason</th><th>Timestamp</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+  <div class="glass card-3d rounded-2xl p-6 w-full max-w-2xl">
+    <div id="chatlog" class="h-80 overflow-y-auto bg-slate-900/50 rounded-xl p-4 mb-4 border border-slate-700"></div>
+
+    <div class="flex items-center space-x-3">
+      <input id="input" type="text" 
+             placeholder="Enter news or tweet..."
+             class="flex-grow bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-cyan-400">
+      <button id="send" class="bg-cyan-500 hover:bg-cyan-400 px-6 py-2 rounded-lg font-semibold shadow-lg">Analyze</button>
     </div>
   </div>
 
+  <button onclick="window.location.href='/sentiment'"
+          class="mt-6 bg-emerald-500 hover:bg-emerald-400 px-8 py-3 rounded-xl font-semibold shadow-lg hover:scale-105 transition">
+    📊 Open Sentiment Dashboard
+  </button>
+
   <script>
-    async function refreshTrades(){
-      const r = await fetch('/trades');
-      const js = await r.json();
-      const tbody = document.querySelector('#tradesTbl tbody');
-      tbody.innerHTML = '';
-      js.trades.forEach(t => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${t.id}</td>
-          <td style="color:${t.side === 'BUY' ? '#00ff9d' : '#ff6b6b'};font-weight:bold;">${t.side}</td>
-          <td>${t.quantity}</td>
-          <td>${t.price || '-'}</td>
-          <td>${t.reason}</td>
-          <td>${t.ts}</td>`;
-        tbody.appendChild(row);
-      });
+    const chatlog = document.getElementById("chatlog");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+
+    function appendMessage(sender, text, color="text-cyan-300") {
+      const div = document.createElement("div");
+      div.classList.add("mb-3", "p-3", "rounded-lg", "bg-slate-800/60", "border", "border-slate-700");
+      div.innerHTML = `<b class="${color}">${sender}:</b><br><span class="text-gray-300">${text}</span>`;
+      chatlog.appendChild(div);
+      chatlog.scrollTop = chatlog.scrollHeight;
     }
 
-    document.getElementById('getSignal').addEventListener('click', async () => {
-      const res = await fetch('/signal', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})});
+    async function analyzeText() {
+      const msg = input.value.trim();
+      if (!msg) return;
+      appendMessage("You", msg);
+      input.value = "";
+
+      const res = await fetch("/analyze", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({text: msg})
+      });
       const data = await res.json();
-      const el = document.getElementById('signalOut');
-      el.innerText = `Signal: ${data.signal} — ${data.reason}`;
-      el.style.color = (data.signal === 'BUY') ? '#00ff9d' : (data.signal === 'SELL') ? '#ff6b6b' : '#00d4ff';
-    });
 
-    document.getElementById('buy').addEventListener('click', async () => {
-      const qty = document.getElementById('qty').value || 1;
-      await fetch('/paper_trade', {
-        method: 'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({side:'BUY',quantity:qty,price:null,reason:'UI'})
-      });
-      refreshTrades();
-    });
+      const formatted = `
+        📈 <b>Sentiment:</b> ${data.sentiment} (${data.sentiment_score})
+        <br>🏢 <b>Entities:</b> ${data.entities.join(", ") || "None"}
+        <br>🎯 <b>Matched Stocks:</b> ${data.matched_stocks.join(", ") || "None"}
+      `;
+      appendMessage("AI", formatted, "text-emerald-300");
+    }
 
-    document.getElementById('sell').addEventListener('click', async () => {
-      const qty = document.getElementById('qty').value || 1;
-      await fetch('/paper_trade', {
-        method: 'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({side:'SELL',quantity:qty,price:null,reason:'UI'})
-      });
-      refreshTrades();
-    });
-
-    refreshTrades();
+    send.addEventListener("click", analyzeText);
+    input.addEventListener("keypress", e => e.key === "Enter" && analyzeText());
   </script>
 </body>
 </html>
