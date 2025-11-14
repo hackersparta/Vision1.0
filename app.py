@@ -93,32 +93,38 @@ def sentiment_page():
 
 @app.route("/sentiment_data")
 @app.route("/sentiment_data")
+@app.route("/sentiment_data")
 def sentiment_data():
-    """Return summarized sentiment data for charts, supports mode=current or all"""
     import sqlite3
     from trade_db import DB
     from flask import request
+    from datetime import datetime, timedelta
 
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
 
     stock = request.args.get("stock")
     days = request.args.get("days", type=int, default=7)
-    mode = request.args.get("mode", "all")  # default: all data
+    mode = request.args.get("mode", "all")
 
-    # Find latest date for "current fetch"
+    # Get latest entry date
     cur.execute("SELECT date FROM news_sentiment ORDER BY id DESC LIMIT 1")
-    latest_date = cur.fetchone()[0] if cur.fetchone() else None
+    row = cur.fetchone()
+    latest_date = row[0] if row else None
 
     where_clause = []
     params = []
 
+    # ----- CURRENT FETCH FILTER -----
     if mode == "current" and latest_date:
-        where_clause.append("date = ?")
-        params.append(latest_date)
+        where_clause.append("date LIKE ?")
+        params.append(latest_date.split("T")[0] + "%")
+
+    # ----- HISTORICAL FILTER -----
     else:
-        where_clause.append("date >= DATE('now', ?)")
-        params.append(f"-{days} day")
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        where_clause.append("substr(date, 1, 10) >= ?")
+        params.append(start_date)
 
     if stock and stock.lower() != "all":
         where_clause.append("LOWER(stock)=LOWER(?)")
@@ -126,25 +132,26 @@ def sentiment_data():
 
     where_sql = "WHERE " + " AND ".join(where_clause)
 
-    # Sentiment counts
+    # --- Sentiment counts ---
     cur.execute(f"""
         SELECT sentiment, COUNT(*) FROM news_sentiment
         {where_sql}
         GROUP BY sentiment
     """, params)
-    sentiment_counts = dict(cur.fetchall())
+    sentiment_counts_raw = dict(cur.fetchall())
+    sentiment_counts = {k: v for k, v in sentiment_counts_raw.items() if k}
 
-    # Top 5 positive
+
+    # --- Top positive ---
     cur.execute(f"""
         SELECT stock, COUNT(*) FROM news_sentiment
         {where_sql} AND sentiment='POSITIVE'
         GROUP BY stock
-        ORDER BY COUNT(*) DESC
-        LIMIT 5
+        ORDER BY COUNT(*) DESC LIMIT 5
     """, params)
-    top_positive = [{"stock": r[0], "count": r[1]} for r in cur.fetchall()]
+    top_positive = [{"stock": s, "count": c} for s,c in cur.fetchall()]
 
-    # Latest table records
+    # --- Table rows ---
     cur.execute(f"""
         SELECT date, stock, headline, sentiment, confidence, entities, link
         FROM news_sentiment
@@ -186,6 +193,55 @@ def run_news_fetcher():
 
     except Exception as e:
         return jsonify({"status": f"❌ Error running fetcher: {e}"})
+
+@app.route("/sentiment_trend")
+def sentiment_trend():
+    import sqlite3
+    from trade_db import DB
+    from flask import request
+    from datetime import datetime, timedelta
+
+    stock = request.args.get("stock", "all")
+    days = int(request.args.get("days", 7))
+
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+
+    if stock.lower() == "all":
+        cur.execute("""
+            SELECT substr(date,1,10) as d,
+                   AVG(CASE 
+                        WHEN sentiment='POSITIVE' THEN confidence
+                        WHEN sentiment='NEGATIVE' THEN -confidence
+                        ELSE 0
+                       END)
+            FROM news_sentiment
+            WHERE substr(date,1,10) >= ?
+            GROUP BY d ORDER BY d ASC
+        """, (start_date,))
+    else:
+        cur.execute("""
+            SELECT substr(date,1,10) as d,
+                   AVG(CASE 
+                        WHEN sentiment='POSITIVE' THEN confidence
+                        WHEN sentiment='NEGATIVE' THEN -confidence
+                        ELSE 0
+                       END)
+            FROM news_sentiment
+            WHERE substr(date,1,10) >= ?
+              AND LOWER(stock)=LOWER(?)
+            GROUP BY d ORDER BY d ASC
+        """, (start_date, stock))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return jsonify({
+        "dates": [r[0] for r in rows],
+        "scores": [float(r[1]) for r in rows]
+    })
 
 
 if __name__ == "__main__":
