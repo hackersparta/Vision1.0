@@ -20,7 +20,11 @@ args = parser.parse_args()
 BASE_DIR = os.path.dirname(__file__)
 STOCK_FILE = os.path.join(BASE_DIR, "my_stocks.json")
 DATA_DIR = os.path.join(BASE_DIR, "data")
-API_URL = "http://localhost:8000/analyze"
+USE_GEMINI = os.environ.get("USE_GEMINI", "0") == "1"
+
+API_URL = None
+if not USE_GEMINI:
+    API_URL = "http://localhost:8000/analyze"
 
 os.makedirs(DATA_DIR, exist_ok=True)
 init_news_table()  # ensure table exists before starting
@@ -61,9 +65,28 @@ def fetch_news(stock_name, limit=20):
 
 
 def analyze_headline(headline):
-    """Send headline to /analyze endpoint."""
+    """
+    If USE_GEMINI=1 → Call gemini_client directly
+    Else → Call local /analyze
+    """
+    if USE_GEMINI:
+        from gemini_client import analyze_with_gemini
+        result = analyze_with_gemini(headline)
+
+        if "error" in result:
+            return {"headline": headline, "error": result["error"]}
+
+        return {
+            "headline": headline,
+            "sentiment": result.get("sentiment"),
+            "score": result.get("score"),
+            "entities": ", ".join(result.get("entities", [])),
+            "matched_stocks": ", ".join(result.get("matched_stocks", [])),
+        }
+
+    # OLD LOCAL MODE
     try:
-        res = requests.post(API_URL, json={"text": headline}, timeout=15)
+        res = requests.post(API_URL, json={"text": headline}, timeout=20)
         if res.status_code == 200:
             data = res.json()
             return {
@@ -73,10 +96,9 @@ def analyze_headline(headline):
                 "entities": ", ".join(data.get("entities", [])),
                 "matched_stocks": ", ".join(data.get("matched_stocks", []))
             }
-        else:
-            return {"headline": headline, "error": res.text}
     except Exception as e:
         return {"headline": headline, "error": str(e)}
+
 
 # ==========================
 # MAIN

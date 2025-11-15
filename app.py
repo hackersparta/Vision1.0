@@ -7,6 +7,7 @@ from transformers import pipeline
 from trade_db import DB
 import sqlite3
 import subprocess
+from gemini_client import analyze_with_gemini
 
 app = Flask(__name__)
 CORS(app)
@@ -44,14 +45,36 @@ def analyze_text():
         if not user_input:
             return jsonify({'error': 'No text provided.'}), 400
 
-        # Sentiment analysis
-        sentiment_result = sentiment_analyzer(user_input)[0]
-        sentiment = sentiment_result['label']
-        sentiment_score = round(sentiment_result['score'], 3)
+        USE_GEMINI = os.environ.get("USE_GEMINI", "0") == "1"
 
-        # Named Entity Recognition
-        entities = ner_model(user_input)
-        extracted_entities = [e['word'] for e in entities if e['entity_group'] == 'ORG']
+        if USE_GEMINI:
+            g = analyze_with_gemini(user_input)
+
+            if "error" in g:
+                return jsonify({"error": g["error"]}), 500
+
+            sentiment = g.get("sentiment", "NEUTRAL")
+            sentiment_score = g.get("score", 0)
+
+            extracted_entities = g.get("entities", [])
+            matched_stocks = g.get("matched_stocks", [])
+
+        else:
+            # OLD HF PIPELINE
+            sentiment_result = sentiment_analyzer(user_input)[0]
+            sentiment = sentiment_result['label']
+            sentiment_score = round(sentiment_result['score'], 3)
+
+            # Named Entity Recognition
+            entities = ner_model(user_input)
+            extracted_entities = [e['word'] for e in entities if e['entity_group'] == 'ORG']
+
+            # Match entities with your stock list
+            matched_stocks = [
+                stock for stock in STOCK_LIST
+                if any(stock.lower() in entity.lower() for entity in extracted_entities)
+            ]
+
 
         # Match entities with your stock list
         matched_stocks = [
@@ -272,5 +295,5 @@ def sentiment_trend():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000)
     
