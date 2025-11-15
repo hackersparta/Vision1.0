@@ -87,7 +87,17 @@ def sentiment_page():
         """)
         rows = cur.fetchall()
         conn.close()
-        return render_template("sentiment.html", data=rows)
+
+        # Load full stock list from JSON
+        with open("my_stocks.json", "r") as f:
+            full_stock_list = json.load(f)
+
+        return render_template(
+            "sentiment.html",
+            data=rows,
+            stocks=full_stock_list
+        )
+
     except Exception as e:
         return f"Error loading sentiment data: {e}"
 
@@ -171,28 +181,45 @@ def sentiment_data():
 
 @app.route("/run_news_fetcher", methods=["POST"])
 def run_news_fetcher():
-    """Run the news fetcher and wait until it finishes"""
+    """Run news fetcher with selected stocks + days"""
     import subprocess
     import time
+    import json
+
+    data = request.get_json()  # get JSON from frontend
+    selected_stocks = data.get("stocks", [])
+    days = data.get("days", 1)
+
+    # base command
+    cmd = ["python3", "news_fetcher.py"]
+
+    # add selected stocks
+    if selected_stocks and len(selected_stocks) > 0:
+        cmd += ["--stocks", ",".join(selected_stocks)]
+
+    # add days argument
+    if days:
+        cmd += ["--days", str(days)]
 
     try:
         start_time = time.time()
-        process = subprocess.run(["python3", "news_fetcher.py"], capture_output=True, text=True)
+        process = subprocess.run(cmd, capture_output=True, text=True)
         duration = round(time.time() - start_time, 2)
 
         if process.returncode == 0:
             return jsonify({
-                "status": f"✅ News fetcher completed successfully in {duration} sec",
-                "output": process.stdout[-4000:]  # last few log lines
+                "status": f"✅ Completed in {duration} sec",
+                "output": process.stdout[-2000:]
             })
         else:
             return jsonify({
-                "status": f"❌ Fetcher failed after {duration} sec",
+                "status": f"❌ Failed in {duration} sec",
                 "error": process.stderr
             })
 
     except Exception as e:
-        return jsonify({"status": f"❌ Error running fetcher: {e}"})
+        return jsonify({"status": f"❌ Error: {e}"})
+
 
 @app.route("/sentiment_trend")
 def sentiment_trend():
@@ -245,5 +272,5 @@ def sentiment_trend():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, debug=True)
     

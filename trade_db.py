@@ -49,7 +49,7 @@ def init_news_table():
         confidence REAL,
         entities TEXT,
         matched_stocks TEXT,
-        link TEXT,
+        link TEXT UNIQUE,
         ts TEXT
     )
     """)
@@ -62,7 +62,7 @@ def log_news_sentiment(stock, headline, sentiment, confidence, entities, matched
     cur = conn.cursor()
     ts = datetime.utcnow().isoformat()
     cur.execute("""
-        INSERT INTO news_sentiment
+        INSERT OR IGNORE INTO news_sentiment
         (date, stock, headline, sentiment, confidence, entities, matched_stocks, link, ts)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (

@@ -7,6 +7,12 @@ import time
 import feedparser
 import urllib.parse
 from trade_db import init_news_table, log_news_sentiment  # ← added import
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stocks")
+parser.add_argument("--days")
+args = parser.parse_args()
 
 # ==========================
 # CONFIG
@@ -20,8 +26,16 @@ os.makedirs(DATA_DIR, exist_ok=True)
 init_news_table()  # ensure table exists before starting
 
 # Load stock list
+# Load full stock list
 with open(STOCK_FILE, "r", encoding="utf-8") as f:
-    STOCKS = json.load(f)
+    all_stocks = json.load(f)
+
+# Override with selected stocks if provided
+if args.stocks:
+    STOCKS = args.stocks.split(",")
+else:
+    STOCKS = all_stocks
+fetch_days = int(args.days) if args.days else 1
 
 today = datetime.date.today().isoformat()
 csv_file = os.path.join(DATA_DIR, f"sentiment_{today}.csv")
@@ -29,10 +43,14 @@ csv_file = os.path.join(DATA_DIR, f"sentiment_{today}.csv")
 # ==========================
 # FUNCTIONS
 # ==========================
-def fetch_news(stock_name, limit=5):
+def fetch_news(stock_name, limit=20):
     """Fetch recent news headlines from Google News RSS."""
     query = urllib.parse.quote_plus(f"{stock_name} stock")
-    rss_url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+    rss_url = (
+    f"https://news.google.com/rss/search?q={query}+when:{fetch_days}d"
+    f"&hl=en-IN&gl=IN&ceid=IN:en"
+)
+
     feed = feedparser.parse(rss_url)
 
     headlines = []
