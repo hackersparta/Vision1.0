@@ -1,3 +1,26 @@
-flask
-flask-cors
-requests
+#pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+flask==3.1.2
+flask-cors==6.0.1
+requests==2.32.5
+feedparser==6.0.12
+
+# NLP + Transformers
+transformers==4.35.2
+tokenizers==0.14.1
+safetensors==0.4.0
+
+# PyTorch (CPU only, stable with transformers)
+torch==2.2.0+cpu ; extra_index_url=https://download.pytorch.org/whl/cpu
+
+# Dependencies used by HF + Transformers
+huggingface-hub==0.20.3
+regex==2023.12.25
+
+# NumPy must be 1.x for torch 2.2
+numpy==1.26.4
+
+# Optional (small + safe)
+python-dateutil==2.9.0
+typing_extensions==4.9.0
+google-generativeai==0.12.0

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sentiment Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  
+  body {
+    background: radial-gradient(circle at 15% 20%, #0f172a, #1e293b);
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+  }
+  .glass {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 6px 35px rgba(0,0,0,0.35);
+    padding: 10px !important;
+  }
+  table tbody {
+    display: block;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  table thead, table tbody tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+  }
+  canvas {
+  max-height: 180px !important;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.loading-spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  transform-origin: center;
+}
+:root {
+  zoom: 0.8;
+}
+h2, h3 {
+  margin-bottom: 8px !important;
+}
+/* ----- MULTISELECT CHIPS UI ----- */
+.multi-select {
+  background: #1e293b;
+  border: 1px solid #334155;
+  padding: 6px;
+  border-radius: 8px;
+  width: 260px;
+  min-height: 46px;
+  cursor: text;
+  position: relative;
+}
+
+.multi-selected-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.multi-chip {
+  background: #4b5563;
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.multi-chip span {
+  cursor: pointer;
+  font-weight: bold;
+  color: #fca5a5;
+}
+
+.multi-search {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: white;
+  padding: 4px;
+  flex: 1;
+  min-width: 80px;
+}
+
+.multi-dropdown {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  margin-top: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  display: none;
+  position: absolute;
+  z-index: 100;
+  width: 260px;
+}
+
+.multi-option {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.multi-option:hover {
+  background: #334155;
+}
+
+</style>
+</head>
+
+<body class="p-6">
+
+<!-- Header -->
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-3xl font-bold text-cyan-300">📈 Market Sentiment Dashboard</h1>
+  <button onclick="window.location.href='/'"
+          class="bg-cyan-500 hover:bg-cyan-400 px-6 py-2 rounded-lg text-white font-semibold">
+    🏠 Back
+  </button>
+</div>
+
+<!-- Filters + Trigger -->
+<div class="glass p-4 rounded-xl mb-6 flex flex-wrap justify-between items-center">
+  <div class="flex space-x-4">
+    <div>
+      <label>Stock:</label>
+      <select id="stockSelect" class="bg-slate-700 border border-slate-600 rounded px-3 py-1">
+        <option value="all">All</option>
+        {% for stock in stocks %}
+          <option value="{{ stock }}">{{ stock }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>Days:</label>
+      <select id="daysSelect" class="bg-slate-700 border border-slate-600 rounded px-3 py-1">
+        <option value="1">1</option>
+        <option value="3">3</option>
+        <option value="7" selected>7</option>
+        <option value="30">30</option>
+      </select>
+    </div>
+
+    <button id="refreshBtn"
+            class="bg-cyan-500 hover:bg-cyan-400 px-4 py-2 rounded-lg font-semibold">
+      🔄 Refresh
+    </button>
+  </div>
+  <div class="flex space-x-4 items-center mr-6">
+  
+      <!-- NEW MULTI SELECT FOR FETCH -->
+      <div class="relative">
+        <label class="font-semibold text-gray-300">Fetch Stocks:</label><br>
+
+        <div id="multiSelect" class="multi-select">
+            <div id="selectedArea" class="multi-selected-area"></div>
+            <input id="multiSearch" class="multi-search" placeholder="Search stock...">
+        </div>
+
+        <div id="multiDropdown" class="multi-dropdown">
+            {% for stock in stocks %}
+            <div class="multi-option" data-value="{{ stock }}">{{ stock }}</div>
+            {% endfor %}
+        </div>
+
+        <!-- HIDDEN ORIGINAL SELECT (for backend compatibility) -->
+        <select id="fetchStockSelect" multiple hidden>
+            {% for stock in stocks %}
+            <option value="{{ stock }}">{{ stock }}</option>
+            {% endfor %}
+        </select>
+      </div>
+
+  
+    <!-- DAYS PICKER FOR FETCH -->
+    <div>
+      <label class="font-semibold text-gray-300">Fetch Days:</label><br>
+      <select id="fetchDaysSelect" 
+              class="bg-slate-700 border border-slate-600 rounded px-3 py-2 w-28">
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="7">7</option>
+      </select>
+    </div>
+  
+  </div>
+
+  <div class="flex items-center space-x-3">
+    <button id="fetchBtn"
+            class="bg-emerald-500 hover:bg-emerald-400 px-6 py-2 rounded-lg font-semibold flex items-center space-x-2 transition-all">
+      <span id="fetchIcon">📰</span>
+      <span id="fetchText">Run News Fetcher</span>
+    </button>
+  
+    <span id="fetchStatus" class="text-gray-400 text-sm ml-2 hidden">
+      ⏳ Starting...
+    </span>
+  </div>
+  
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h2 class="text-cyan-300 text-lg mb-3">📊 Sentiment Overview (Last 7 Days)</h2>
+    <canvas id="sentimentChart"></canvas>
+  </div>
+
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h2 class="text-cyan-300 text-lg mb-3">🔥 Top Positive Stocks</h2>
+    <canvas id="topStocksChart"></canvas>
+  </div>
+</div>
+
+<!-- TREND LINE -->
+<h2 class="text-2xl text-blue-300 mb-2">📈 Sentiment Trend (Last X Days)</h2>
+<div class="glass p-4 rounded-2xl mb-8">
+  <canvas id="trendChart"></canvas>
+</div>
+
+
+<!-- CURRENT FETCH DASHBOARD -->
+<h2 class="text-2xl text-emerald-400 mb-2">🆕 Current Fetch Results</h2>
+<p id="latestDate" class="text-gray-400 mb-4 text-sm"></p>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h3 class="text-cyan-300 text-lg mb-3">📊 Sentiment (Current)</h3>
+    <canvas id="sentimentChartCurrent"></canvas>
+  </div>
+
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h3 class="text-cyan-300 text-lg mb-3">🔥 Top Positive Stocks (Current)</h3>
+    <canvas id="topStocksChartCurrent"></canvas>
+  </div>
+</div>
+
+<!-- HISTORICAL DASHBOARD -->
+<h2 class="text-2xl text-cyan-400 mb-2">📜 Historical Data Overview</h2>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h3 class="text-cyan-300 text-lg mb-3">📈 Sentiment (All)</h3>
+    <canvas id="sentimentChartAll"></canvas>
+  </div>
+
+  <div class="glass p-4 rounded-2xl col-span-2">
+    <h3 class="text-cyan-300 text-lg mb-3">💹 Top Positive Stocks (All)</h3>
+    <canvas id="topStocksChartAll"></canvas>
+  </div>
+</div>
+
+
+<!-- Table -->
+<div class="glass p-4 rounded-2xl">
+  <h2 class="text-lg text-cyan-300 mb-3">Latest Headlines</h2>
+
+  <table class="min-w-full text-sm">
+    <thead class="bg-slate-800 text-cyan-300 uppercase">
+      <tr>
+        <th class="px-3 py-2">Date</th>
+        <th class="px-3 py-2">Stock</th>
+        <th class="px-3 py-2">Headline</th>
+        <th class="px-3 py-2">Sentiment</th>
+        <th class="px-3 py-2">Conf</th>
+        <th class="px-3 py-2">Entities</th>
+        <th class="px-3 py-2">Link</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in data %}
+      <tr class="border-b border-slate-700 hover:bg-slate-800/40 transition">
+        <td class="px-3 py-2">{{ row[0] }}</td>
+        <td class="px-3 py-2">{{ row[1] }}</td>
+        <td class="px-3 py-2 text-gray-300">{{ row[2] }}</td>
+        <td class="px-3 py-2 
+            {% if row[3]=='POSITIVE' %}text-green-400{% 
+               elif row[3]=='NEGATIVE' %}text-red-400{% 
+               else %}text-yellow-300{% endif %}">
+          {{ row[3] }}
+        </td>
+        <td class="px-3 py-2">{{ "%.2f"|format(row[4] or 0) }}</td>
+        <td class="px-3 py-2">{{ row[5] }}</td>
+        <td class="px-3 py-2"><a class="text-blue-400" href="{{ row[6] }}" target="_blank">🔗</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+let sentimentChart, topStocksChart;
+let sentimentChartCurrent, topStocksChartCurrent, sentimentChartAll, topStocksChartAll;
+let trendChart;
+
+// ---------- Load Chart Data ----------
+async function loadCharts() {
+  const stock = document.getElementById("stockSelect").value;
+  const days = document.getElementById("daysSelect").value;
+  const res = await fetch(`/sentiment_data?stock=${stock}&days=${days}`);
+  const data = await res.json();
+
+  const ctx1 = document.getElementById("sentimentChart").getContext("2d");
+  const ctx2 = document.getElementById("topStocksChart").getContext("2d");
+
+  if (sentimentChart) sentimentChart.destroy();
+  if (topStocksChart) topStocksChart.destroy();
+
+  const sentimentLabels = ["POSITIVE", "NEGATIVE", "NEUTRAL"];
+  const sentimentColors = {
+    POSITIVE: "#22c55e",
+    NEGATIVE: "#ef4444",
+    NEUTRAL: "#eab308"
+  };
+  const sentimentData = sentimentLabels.map(label => data.sentiment_counts[label] || 0);
+
+  sentimentChart = new Chart(ctx1, {
+    type: "bar",
+    data: {
+      labels: sentimentLabels,
+      datasets: [{
+        label: "Headlines",
+        data: sentimentData,
+        backgroundColor: sentimentLabels.map(l => sentimentColors[l]),
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: "Sentiment Distribution",
+          color: "#e2e8f0",
+          font: { size: 14, weight: 'bold' }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#e2e8f0" } },
+        y: { ticks: { color: "#e2e8f0" } }
+      }
+    }
+  });
+
+  topStocksChart = new Chart(ctx2, {
+    type: "bar",
+    data: {
+      labels: data.top_positive.map(i => i.stock),
+      datasets: [{
+        label: "Positive Mentions",
+        data: data.top_positive.map(i => i.count),
+        backgroundColor: "#22d3ee",
+        borderRadius: 8
+      }]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: "#e2e8f0" }},
+        y: { ticks: { color: "#e2e8f0" }}
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+async function loadChartsDual() {
+  const stock = document.getElementById("stockSelect").value;
+  const days = document.getElementById("daysSelect").value;
+
+  const [currentRes, allRes] = await Promise.all([
+    fetch(`/sentiment_data?mode=current&stock=${stock}&days=${days}`).then(r => r.json()),
+    fetch(`/sentiment_data?mode=all&stock=${stock}&days=${days}`).then(r => r.json())
+  ]);
+
+  document.getElementById("latestDate").textContent =
+    currentRes.latest_date ? `Latest Fetch Date: ${currentRes.latest_date}` : "No recent data";
+
+  const chartConfigs = [
+    { ctx: "sentimentChartCurrent", data: currentRes.sentiment_counts, horizontal: true },
+    { ctx: "topStocksChartCurrent", data: currentRes.top_positive, horizontal: false },
+    { ctx: "sentimentChartAll", data: allRes.sentiment_counts, horizontal: true },
+    { ctx: "topStocksChartAll", data: allRes.top_positive, horizontal: false }
+  ];
+
+  const chartRefs = {
+    sentimentChartCurrent,
+    topStocksChartCurrent,
+    sentimentChartAll,
+    topStocksChartAll
+  };
+
+  chartConfigs.forEach(cfg => {
+    const ctx = document.getElementById(cfg.ctx).getContext("2d");
+
+    // Destroy existing chart if it exists
+    if (chartRefs[cfg.ctx] && chartRefs[cfg.ctx].destroy) {
+      chartRefs[cfg.ctx].destroy();
+    }
+
+    const newChart = new Chart(ctx, {
+      type: "bar",
+      data: cfg.horizontal
+        ? (() => {
+            const sentimentLabels = ["POSITIVE", "NEGATIVE", "NEUTRAL"];
+            const sentimentColors = {
+              POSITIVE: "#22c55e",
+              NEGATIVE: "#ef4444",
+              NEUTRAL: "#eab308"
+            };
+            const sentimentData = sentimentLabels.map(label => cfg.data[label] || 0);
+            return {
+              labels: sentimentLabels,
+              datasets: [{
+                data: sentimentData,
+                backgroundColor: sentimentLabels.map(l => sentimentColors[l]),
+                borderRadius: 6
+              }]
+            };
+          })()
+        : {
+            labels: cfg.data.map(i => i.stock),
+            datasets: [{ data: cfg.data.map(i => i.count), backgroundColor: "#22d3ee", borderRadius: 8 }]
+          },
+      options: {
+        indexAxis: cfg.horizontal ? "y" : "x",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#e2e8f0" } },
+          y: { ticks: { color: "#e2e8f0" } }
+        }
+      }
+    });
+
+    if (cfg.ctx === "sentimentChartCurrent") sentimentChartCurrent = newChart;
+    if (cfg.ctx === "topStocksChartCurrent") topStocksChartCurrent = newChart;
+    if (cfg.ctx === "sentimentChartAll") sentimentChartAll = newChart;
+    if (cfg.ctx === "topStocksChartAll") topStocksChartAll = newChart;
+  });
+}
+
+async function loadTable() {
+  const stock = document.getElementById("stockSelect").value;
+  const days = document.getElementById("daysSelect").value;
+
+  const res = await fetch(`/sentiment_data?mode=all&stock=${stock}&days=${days}`);
+  const data = await res.json();
+
+  const tbody = document.querySelector("table tbody");
+  tbody.innerHTML = "";
+
+  data.rows.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-slate-700 hover:bg-slate-800/40 transition";
+
+    tr.innerHTML = `
+      <td class="px-3 py-2">${row[0]}</td>
+      <td class="px-3 py-2">${row[1]}</td>
+      <td class="px-3 py-2 text-gray-300">${row[2]}</td>
+      <td class="px-3 py-2 ${row[3] === "POSITIVE" ? "text-green-400" :
+                           row[3] === "NEGATIVE" ? "text-red-400" :
+                           "text-yellow-300"}">
+        ${row[3]}
+      </td>
+      <td class="px-3 py-2">${row[4].toFixed(2)}</td>
+      <td class="px-3 py-2">${row[5]}</td>
+      <td class="px-3 py-2">
+        <a class="text-blue-400" href="${row[6]}" target="_blank">🔗</a>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("refreshBtn").onclick = async () => {
+  await loadCharts();
+  await loadChartsDual();
+  await loadTrend();
+  await loadTable();
+};
+
+
+// ---------- Manual News Fetcher ----------
+document.getElementById("fetchBtn").onclick = async () => {
+  const fetchBtn = document.getElementById("fetchBtn");
+  const fetchText = document.getElementById("fetchText");
+  const fetchIcon = document.getElementById("fetchIcon");
+  const fetchStatus = document.getElementById("fetchStatus");
+
+  fetchBtn.classList.add("bg-gray-500", "cursor-not-allowed");
+  fetchBtn.classList.remove("hover:bg-emerald-400");
+  fetchText.textContent = "Fetching...";
+  fetchIcon.textContent = "⏳";
+  fetchIcon.classList.add("loading-spin");
+
+  fetchStatus.classList.remove("hidden");
+  fetchStatus.textContent = "⏳ Fetching latest headlines...";
+
+  try {
+    const fetchStockSelect = document.getElementById("fetchStockSelect");
+    const selectedFetchStocks = [...fetchStockSelect.selectedOptions].map(o => o.value);
+
+    const fetchDays = document.getElementById("fetchDaysSelect").value;
+
+    const res = await fetch("/run_news_fetcher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stocks: selectedFetchStocks,
+        days: fetchDays
+      })
+    });
+
+    const msg = await res.json();
+
+    fetchIcon.textContent = "✅";
+    fetchText.textContent = "Completed";
+    fetchIcon.classList.remove("loading-spin");
+    fetchStatus.textContent = msg.status.includes("✅")
+      ? "✅ News data updated successfully!"
+      : "⚠️ " + msg.status;
+
+    setTimeout(() => {
+      fetchBtn.classList.remove("bg-gray-500", "cursor-not-allowed");
+      fetchBtn.classList.add("hover:bg-emerald-400");
+      fetchText.textContent = "Run News Fetcher";
+      fetchIcon.textContent = "📰";
+      fetchStatus.classList.add("hidden");
+      async function refreshData() {
+        await loadCharts();
+        await loadChartsDual();
+        await loadTable();
+      }
+      refreshData();
+    }, 6000);
+
+  } catch (err) {
+    fetchIcon.textContent = "❌";
+    fetchText.textContent = "Error";
+    fetchStatus.textContent = "❌ Could not start fetcher: " + err.message;
+  }
+};
+
+async function loadTrend() {
+  const stock = document.getElementById("stockSelect").value;
+  const days = document.getElementById("daysSelect").value;
+
+  const res = await fetch(`/sentiment_trend?stock=${stock}&days=${days}`);
+  const data = await res.json();
+
+  const ctx = document.getElementById("trendChart").getContext("2d");
+
+  if (trendChart) trendChart.destroy();
+
+  trendChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.dates,
+      datasets: [{
+        label: "Sentiment Score",
+        data: data.scores,
+        borderWidth: 2,
+        tension: 0.3,
+        borderColor: "#38bdf8",
+        pointRadius: 4,
+        pointBackgroundColor: "#0ea5e9",
+        fill: false
+      }]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: "#e2e8f0" } },
+        y: { ticks: { color: "#e2e8f0" } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+/* ------------------ Chips Multi-Select Logic ------------------ */
+
+const multiSelect = document.getElementById("multiSelect");
+const selectedArea = document.getElementById("selectedArea");
+const multiSearch = document.getElementById("multiSearch");
+const dropdown = document.getElementById("multiDropdown");
+const hiddenSelect = document.getElementById("fetchStockSelect");
+
+let selectedValues = new Set();
+
+// Show dropdown on click
+multiSelect.addEventListener("click", () => {
+    dropdown.style.display = "block";
+    multiSearch.focus();
+});
+
+// Filter dropdown while typing
+multiSearch.addEventListener("keyup", () => {
+    const text = multiSearch.value.toLowerCase();
+    document.querySelectorAll(".multi-option").forEach(opt => {
+        opt.style.display = opt.textContent.toLowerCase().includes(text) ? "block" : "none";
+    });
+});
+
+// Select option
+document.querySelectorAll(".multi-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+        const val = opt.dataset.value;
+
+        if (!selectedValues.has(val)) {
+            selectedValues.add(val);
+
+            // Create chip
+            const chip = document.createElement("div");
+            chip.className = "multi-chip";
+            chip.innerHTML = `${val} <span data-x="${val}">×</span>`;
+            selectedArea.appendChild(chip);
+
+            // Add to hidden select
+            [...hiddenSelect.options].forEach(o => {
+                if (o.value === val) o.selected = true;
+            });
+        }
+
+        multiSearch.value = "";
+        dropdown.style.display = "none";
+    });
+});
+
+// Remove chip on X click
+selectedArea.addEventListener("click", (e) => {
+    if (e.target.tagName === "SPAN") {
+        const val = e.target.dataset.x;
+        selectedValues.delete(val);
+        e.target.parentElement.remove();
+
+        [...hiddenSelect.options].forEach(o => {
+            if (o.value === val) o.selected = false;
+        });
+    }
+});
+
+// Click outside → close dropdown
+document.addEventListener("click", (e) => {
+    if (!multiSelect.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = "none";
+    }
+});
+
+
+loadCharts();
+loadChartsDual();
+loadTrend();   
+loadTable();
+</script>
+
+</body>
+</html>
