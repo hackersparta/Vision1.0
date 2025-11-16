@@ -15,7 +15,6 @@ CORS(app)
 # ================== LOAD NLP MODELS ==================
 print("Loading NLP models...")
 
-# Lightweight sentiment & NER pipelines
 sentiment_analyzer = pipeline("sentiment-analysis")
 ner_model = pipeline("ner", grouped_entities=True)
 
@@ -23,12 +22,11 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device set to use {device}")
 
 # ================== STOCK LIST ==================
-# ================== STOCK LIST ==================
 STOCK_LIST_PATH = os.path.join(os.path.dirname(__file__), "my_stocks.json")
 
-# Load your existing stock list
 with open(STOCK_LIST_PATH, "r") as f:
     STOCK_LIST = [s.lower() for s in json.load(f)]
+
 
 # ================== ROUTES ==================
 
@@ -37,6 +35,7 @@ def home():
     return render_template('index.html') if os.path.exists("templates/index.html") else jsonify({
         "message": "App running! Use /analyze endpoint for NLP analysis."
     })
+
 
 @app.route('/analyze', methods=['POST'])
 def analyze_text():
@@ -47,8 +46,9 @@ def analyze_text():
 
         USE_GEMINI = os.environ.get("USE_GEMINI", "0") == "1"
 
+        # ---------------- GEMINI MODE ----------------
         if USE_GEMINI:
-            g = analyze_with_gemini(user_input)
+            g = analyze_with_gemini(user_input, source="analyze_endpoint")
 
             if "error" in g:
                 return jsonify({"error": g["error"]}), 500
@@ -56,33 +56,34 @@ def analyze_text():
             sentiment = g.get("sentiment", "NEUTRAL")
             sentiment_score = g.get("score", 0)
 
-            extracted_entities = g.get("entities", [])
+            # ---- FIX: Normalize Gemini entities format ----
+            raw_entities = g.get("entities", [])
+            extracted_entities = []
+
+            for item in raw_entities:
+                if isinstance(item, str):
+                    extracted_entities.append(item)
+                elif isinstance(item, dict):
+                    extracted_entities.append(item.get("entity", ""))
+
+            # Gemini already returns matched stocks in correct format
             matched_stocks = g.get("matched_stocks", [])
 
+        # ---------------- LOCAL ANALYZER MODE ----------------
         else:
-            # OLD HF PIPELINE
             sentiment_result = sentiment_analyzer(user_input)[0]
             sentiment = sentiment_result['label']
             sentiment_score = round(sentiment_result['score'], 3)
 
-            # Named Entity Recognition
             entities = ner_model(user_input)
             extracted_entities = [e['word'] for e in entities if e['entity_group'] == 'ORG']
 
-            # Match entities with your stock list
             matched_stocks = [
                 stock for stock in STOCK_LIST
-                if any(stock.lower() in entity.lower() for entity in extracted_entities)
+                if any(stock.lower() in ent.lower() for ent in extracted_entities)
             ]
 
-
-        # Match entities with your stock list
-        matched_stocks = [
-            stock for stock in STOCK_LIST
-            if any(stock.lower() in entity.lower() for entity in extracted_entities)
-        ]
-
-        # Final result
+        # ---------------- FINAL RESPONSE ----------------
         result = {
             "text": user_input,
             "sentiment": sentiment,
@@ -97,9 +98,9 @@ def analyze_text():
         print("Error in /analyze:", e)
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/sentiment")
 def sentiment_page():
-    """Render HTML dashboard showing latest sentiment analysis"""
     try:
         conn = sqlite3.connect(DB)
         cur = conn.cursor()
@@ -111,7 +112,6 @@ def sentiment_page():
         rows = cur.fetchall()
         conn.close()
 
-        # Load full stock list from JSON
         with open("my_stocks.json", "r") as f:
             full_stock_list = json.load(f)
 
@@ -124,8 +124,7 @@ def sentiment_page():
     except Exception as e:
         return f"Error loading sentiment data: {e}"
 
-@app.route("/sentiment_data")
-@app.route("/sentiment_data")
+
 @app.route("/sentiment_data")
 def sentiment_data():
     import sqlite3
@@ -140,7 +139,6 @@ def sentiment_data():
     days = request.args.get("days", type=int, default=7)
     mode = request.args.get("mode", "all")
 
-    # Get latest entry date
     cur.execute("SELECT date FROM news_sentiment ORDER BY id DESC LIMIT 1")
     row = cur.fetchone()
     latest_date = row[0] if row else None
@@ -148,12 +146,9 @@ def sentiment_data():
     where_clause = []
     params = []
 
-    # ----- CURRENT FETCH FILTER -----
     if mode == "current" and latest_date:
         where_clause.append("date LIKE ?")
         params.append(latest_date.split("T")[0] + "%")
-
-    # ----- HISTORICAL FILTER -----
     else:
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         where_clause.append("substr(date, 1, 10) >= ?")
@@ -165,17 +160,10 @@ def sentiment_data():
 
     where_sql = "WHERE " + " AND ".join(where_clause)
 
-    # --- Sentiment counts ---
-    cur.execute(f"""
-        SELECT sentiment, COUNT(*) FROM news_sentiment
-        {where_sql}
-        GROUP BY sentiment
-    """, params)
+    cur.execute(f"SELECT sentiment, COUNT(*) FROM news_sentiment {where_sql} GROUP BY sentiment", params)
     sentiment_counts_raw = dict(cur.fetchall())
     sentiment_counts = {k: v for k, v in sentiment_counts_raw.items() if k}
 
-
-    # --- Top positive ---
     cur.execute(f"""
         SELECT stock, COUNT(*) FROM news_sentiment
         {where_sql} AND sentiment='POSITIVE'
@@ -184,7 +172,6 @@ def sentiment_data():
     """, params)
     top_positive = [{"stock": s, "count": c} for s,c in cur.fetchall()]
 
-    # --- Table rows ---
     cur.execute(f"""
         SELECT date, stock, headline, sentiment, confidence, entities, link
         FROM news_sentiment
@@ -202,25 +189,21 @@ def sentiment_data():
         "latest_date": latest_date
     })
 
+
 @app.route("/run_news_fetcher", methods=["POST"])
 def run_news_fetcher():
-    """Run news fetcher with selected stocks + days"""
     import subprocess
     import time
-    import json
 
-    data = request.get_json()  # get JSON from frontend
+    data = request.get_json()
     selected_stocks = data.get("stocks", [])
     days = data.get("days", 1)
 
-    # base command
     cmd = ["python3", "news_fetcher.py"]
 
-    # add selected stocks
-    if selected_stocks and len(selected_stocks) > 0:
+    if selected_stocks:
         cmd += ["--stocks", ",".join(selected_stocks)]
 
-    # add days argument
     if days:
         cmd += ["--days", str(days)]
 
@@ -295,5 +278,4 @@ def sentiment_trend():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-    
+    app.run(host="0.0.0.0", port=8500)

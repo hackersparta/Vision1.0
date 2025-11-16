@@ -113,11 +113,53 @@ h2, h3 {
 .multi-option:hover {
   background: #334155;
 }
+/* ========== DUST PARTICLES ========== */
+#dust-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.dust-particle {
+  position: absolute;
+  opacity: 0.7;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+}
+
+@keyframes floatDust {
+  0% {
+    transform: translateY(100vh) translateX(0px) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(100px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+body > *:not(#dust-container) {
+  position: relative;
+  z-index: 1;
+}
 
 </style>
 </head>
 
 <body class="p-6">
+<!-- ADD THIS RIGHT AFTER <body> TAG (as FIRST element inside body) -->
+  <div id="dust-container" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 0; overflow: hidden;"></div>
 
 <!-- Header -->
 <div class="flex justify-between items-center mb-6">
@@ -303,6 +345,45 @@ h2, h3 {
 let sentimentChart, topStocksChart;
 let sentimentChartCurrent, topStocksChartCurrent, sentimentChartAll, topStocksChartAll;
 let trendChart;
+// Create dust particles
+function createDustParticles() {
+  const container = document.getElementById('dust-container');
+  
+  for (let i = 0; i < 100; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'dust-particle';
+    
+    // Size: 2-6px
+    const size = Math.random() * 4 + 2;
+    particle.style.width = size + 'px';
+    particle.style.height = size + 'px';
+    
+    // Position: random left, start from bottom
+    particle.style.left = Math.random() * 100 + '%';
+    particle.style.top = '100vh';
+    
+    // Color: bright cyan/blue
+    const colors = [
+      'rgba(6, 182, 212, 1)',
+      'rgba(14, 165, 233, 1)',
+      'rgba(56, 189, 248, 1)',
+      'rgba(255, 255, 255, 0.8)'
+    ];
+    particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    
+    // Duration: 15-35 seconds
+    const duration = Math.random() * 15 + 8;
+    particle.style.animation = `floatDust ${duration}s linear infinite`;
+    
+    // Delay: random start
+    particle.style.animationDelay = Math.random() * 5 + 's';
+    
+    container.appendChild(particle);
+  }
+}
+
+// Run on page load
+createDustParticles();
 
 // ---------- Load Chart Data ----------
 async function loadCharts() {
@@ -508,9 +589,19 @@ document.getElementById("fetchBtn").onclick = async () => {
   fetchStatus.textContent = "⏳ Fetching latest headlines...";
 
   try {
+    const fetchBtn = document.getElementById("fetchBtn");
     const fetchStockSelect = document.getElementById("fetchStockSelect");
-    const selectedFetchStocks = [...fetchStockSelect.selectedOptions].map(o => o.value);
 
+    // ⬅ NEW FIX — sync multi-select chips to hidden select
+    fetchStockSelect.innerHTML = "";
+    selectedValues.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.selected = true;
+        fetchStockSelect.appendChild(opt);
+    });
+
+    const selectedFetchStocks = [...fetchStockSelect.selectedOptions].map(o => o.value);
     const fetchDays = document.getElementById("fetchDaysSelect").value;
 
     const res = await fetch("/run_news_fetcher", {
@@ -540,6 +631,7 @@ document.getElementById("fetchBtn").onclick = async () => {
       async function refreshData() {
         await loadCharts();
         await loadChartsDual();
+        await loadTrend();
         await loadTable();
       }
       refreshData();
